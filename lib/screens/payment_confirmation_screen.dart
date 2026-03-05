@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:math';
 import '../models/payment_data.dart';
+import '../utils/encryption_helper.dart';
 
 class PaymentConfirmationScreen extends StatelessWidget {
   final PaymentData payment;
@@ -32,18 +32,10 @@ class PaymentConfirmationScreen extends StatelessWidget {
     }
   }
 
-  String _getLastFourDigits(String cardNumber) {
-    if (cardNumber == 'N/A') return 'N/A';
-    String numbers = cardNumber.replaceAll(' ', '');
-    if (numbers.length >= 4) {
-      return numbers.substring(numbers.length - 4);
-    }
-    return numbers;
-  }
-
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final encryptor = EncryptionHelper();
 
     return Scaffold(
       appBar: AppBar(
@@ -99,16 +91,20 @@ class PaymentConfirmationScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  _buildInfoRow('Card holder', payment.cardHolder),
-                  if (payment.cardNumber != 'N/A')
+
+                  _buildInfoRow('Card holder', payment.cardHolder ?? 'N/A'),
+
+                  if (payment.cardNumber != null && payment.cardNumber != 'N/A')
                     _buildInfoRow(
-                      'Card ending',
-                      '**${_getLastFourDigits(payment.cardNumber)}',
+                      'Card',
+                      payment.getMaskedCardNumber(),
                     ),
+
                   _buildInfoRow(
                       'Total amount', _formatPrice(payment.totalPrice)),
                   _buildInfoRow('Payment method', payment.paymentMethod),
                   _buildInfoRow('Date', dateFormat.format(payment.paymentDate)),
+
                   if (payment.saveCardForFuture)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -127,6 +123,33 @@ class PaymentConfirmationScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+
+                  // Indicador de encriptación
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.lock, color: Colors.blue[700], size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Datos encriptados',
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -176,8 +199,26 @@ class PaymentConfirmationScreen extends StatelessWidget {
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('¡Pago exitoso!'),
-                      content: Text(
-                        'Tu pago de ${_formatPrice(payment.totalPrice)} ha sido procesado correctamente.',
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tu pago de ${_formatPrice(payment.totalPrice)} ha sido procesado correctamente.',
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Icon(Icons.lock, color: Colors.green, size: 16),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Transacción segura',
+                                style: TextStyle(
+                                    color: Colors.green, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                       actions: [
                         TextButton(

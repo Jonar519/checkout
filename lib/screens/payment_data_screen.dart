@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/payment_data.dart';
 import '../models/saved_payment_method.dart';
 import '../database/database_helper.dart';
+import '../utils/encryption_helper.dart';
 import '../widgets/custom_button.dart';
 import 'payment_confirmation_screen.dart';
 
@@ -30,16 +31,16 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
   bool _saveCardForFuture = false;
 
   final List<String> _paymentMethods = ['PayPal', 'Credit', 'Wallet'];
-
-  final FocusNode _cardNumberFocus = FocusNode();
-  final FocusNode _validUntilFocus = FocusNode();
-  final FocusNode _cvvFocus = FocusNode();
-  final FocusNode _cardHolderFocus = FocusNode();
-  final FocusNode _paypalEmailFocus = FocusNode();
+  final EncryptionHelper _encryptor = EncryptionHelper();
 
   @override
   void initState() {
     super.initState();
+    _initializeEncryption();
+  }
+
+  Future<void> _initializeEncryption() async {
+    await _encryptor.initialize();
     _loadSavedMethods();
     _setupCardNumberFormatter();
     _setupValidUntilFormatter();
@@ -165,8 +166,9 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
                   _useSavedMethod = true;
                   _selectedPaymentMethod = method.paymentMethod;
 
+                  // Mostrar solo últimos dígitos por seguridad
                   if (method.paymentMethod == 'Credit') {
-                    _cardNumberController.text = method.cardNumber ?? '';
+                    _cardNumberController.text = method.getMaskedDisplay();
                     _cardHolderController.text = method.cardHolder ?? '';
                     _validUntilController.text = method.validUntil ?? '';
                   } else if (method.paymentMethod == 'PayPal') {
@@ -206,7 +208,7 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            method.getDisplayName(),
+                            method.getMaskedDisplay(),
                             style: TextStyle(
                               color: _selectedSavedMethod?.id == method.id
                                   ? Colors.white
@@ -366,7 +368,7 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
             const Icon(Icons.payment, size: 50, color: Colors.blue),
             const SizedBox(height: 12),
             Text(
-              _selectedSavedMethod!.email ?? 'PayPal',
+              _selectedSavedMethod!.getMaskedDisplay(),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -397,7 +399,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _paypalEmailController,
-            focusNode: _paypalEmailFocus,
             keyboardType: TextInputType.emailAddress,
             decoration: InputDecoration(
               hintText: 'tu@email.com',
@@ -421,49 +422,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
   }
 
   Widget _buildWalletContent() {
-    if (_useSavedMethod && _selectedSavedMethod != null) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.green[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green[200]!),
-        ),
-        child: Column(
-          children: [
-            const Icon(Icons.account_balance_wallet,
-                size: 50, color: Colors.green),
-            const SizedBox(height: 12),
-            const Text(
-              'Wallet',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Saldo disponible:'),
-                  Text(
-                    _formatPrice(_selectedSavedMethod?.balance ?? 500000),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -525,7 +483,7 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
             const Icon(Icons.credit_card, size: 50, color: Colors.blue),
             const SizedBox(height: 12),
             Text(
-              _selectedSavedMethod!.getDisplayName(),
+              _selectedSavedMethod!.getMaskedDisplay(),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
@@ -537,6 +495,18 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
             Text(
               'Vence: ${_selectedSavedMethod!.validUntil}',
               style: TextStyle(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Datos encriptados',
+                style: TextStyle(color: Colors.green, fontSize: 12),
+              ),
             ),
           ],
         ),
@@ -552,9 +522,9 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
         const SizedBox(height: 8),
         TextField(
           controller: _cardNumberController,
-          focusNode: _cardNumberFocus,
           keyboardType: TextInputType.number,
           maxLength: 19,
+          obscureText: true, // Ocultar mientras se escribe
           decoration: InputDecoration(
             hintText: '**** **** **** ****',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -580,8 +550,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
               );
             }
           },
-          onSubmitted: (_) =>
-              FocusScope.of(context).requestFocus(_validUntilFocus),
         ),
         const SizedBox(height: 16),
         Row(
@@ -596,9 +564,9 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _validUntilController,
-                    focusNode: _validUntilFocus,
                     keyboardType: TextInputType.number,
                     maxLength: 5,
+                    obscureText: true,
                     decoration: InputDecoration(
                       hintText: 'MM/YY',
                       border: OutlineInputBorder(
@@ -626,8 +594,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
                         );
                       }
                     },
-                    onSubmitted: (_) =>
-                        FocusScope.of(context).requestFocus(_cvvFocus),
                   ),
                 ],
               ),
@@ -643,7 +609,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _cvvController,
-                    focusNode: _cvvFocus,
                     keyboardType: TextInputType.number,
                     obscureText: true,
                     maxLength: 3,
@@ -668,8 +633,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
                         );
                       }
                     },
-                    onSubmitted: (_) =>
-                        FocusScope.of(context).requestFocus(_cardHolderFocus),
                   ),
                 ],
               ),
@@ -682,7 +645,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
         const SizedBox(height: 8),
         TextField(
           controller: _cardHolderController,
-          focusNode: _cardHolderFocus,
           textCapitalization: TextCapitalization.words,
           decoration: InputDecoration(
             hintText: 'Your name and surname',
@@ -691,7 +653,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
             fillColor: Colors.grey[50],
             prefixIcon: const Icon(Icons.person),
           ),
-          onSubmitted: (_) => FocusScope.of(context).unfocus(),
         ),
         const SizedBox(height: 16),
         Row(
@@ -792,52 +753,64 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
     PaymentData payment;
 
     if (_useSavedMethod && _selectedSavedMethod != null) {
+      // Usar método guardado (los datos ya están encriptados)
       payment = PaymentData(
         totalPrice: widget.totalPrice,
         paymentMethod: _selectedSavedMethod!.paymentMethod,
-        cardNumber: _selectedSavedMethod!.cardNumber ?? 'N/A',
-        validUntil: _selectedSavedMethod!.validUntil ?? 'N/A',
-        cvv: '***',
-        cardHolder: _selectedSavedMethod!.cardHolder ?? 'User',
+        cardNumber: _selectedSavedMethod!.cardNumber,
+        validUntil: _selectedSavedMethod!.validUntil,
+        cvv: '***', // No guardamos CVV
+        cardHolder: _selectedSavedMethod!.cardHolder,
         saveCardForFuture: false,
         promoCode: '',
         paymentDate: DateTime.now(),
       );
     } else {
+      // Encriptar datos antes de guardar
+      String? encryptedCardNumber;
+      String? encryptedValidUntil;
+      String? encryptedCvv;
+      String? encryptedCardHolder;
+      String? encryptedEmail;
+      String? cardHash;
+
+      if (_selectedPaymentMethod == 'Credit') {
+        encryptedCardNumber =
+            _encryptor.encryptText(_cardNumberController.text);
+        encryptedValidUntil =
+            _encryptor.encryptText(_validUntilController.text);
+        encryptedCvv = _encryptor.encryptText(_cvvController.text);
+        encryptedCardHolder =
+            _encryptor.encryptText(_cardHolderController.text);
+        cardHash = _encryptor.hashData(_cardNumberController.text);
+      } else if (_selectedPaymentMethod == 'PayPal') {
+        encryptedEmail = _encryptor.encryptText(_paypalEmailController.text);
+      }
+
       payment = PaymentData(
         totalPrice: widget.totalPrice,
         paymentMethod: _selectedPaymentMethod,
-        cardNumber: _selectedPaymentMethod == 'Credit'
-            ? _cardNumberController.text
-            : 'N/A',
-        validUntil: _selectedPaymentMethod == 'Credit'
-            ? _validUntilController.text
-            : 'N/A',
-        cvv: _selectedPaymentMethod == 'Credit' ? _cvvController.text : 'N/A',
-        cardHolder: _selectedPaymentMethod == 'Credit'
-            ? _cardHolderController.text
-            : 'User',
+        cardNumber: encryptedCardNumber,
+        validUntil: encryptedValidUntil,
+        cvv: encryptedCvv,
+        cardHolder: encryptedCardHolder,
         saveCardForFuture: _saveCardForFuture,
         promoCode: '',
         paymentDate: DateTime.now(),
       );
 
-      if (_saveCardForFuture && _selectedPaymentMethod == 'Credit') {
+      // Guardar método para futuro si se solicita
+      if (_saveCardForFuture) {
         final savedMethod = SavedPaymentMethod(
-          paymentMethod: 'Credit',
-          cardNumber: _cardNumberController.text,
-          cardHolder: _cardHolderController.text,
-          validUntil: _validUntilController.text,
+          paymentMethod: _selectedPaymentMethod,
+          cardNumber: encryptedCardNumber,
+          cardHolder: encryptedCardHolder,
+          validUntil: encryptedValidUntil,
+          email: encryptedEmail,
+          balance: _selectedPaymentMethod == 'Wallet' ? 500000.0 : null,
           isDefault: _savedMethods.isEmpty,
           savedDate: DateTime.now(),
-        );
-        await DatabaseHelper().insertSavedPaymentMethod(savedMethod);
-      } else if (_saveCardForFuture && _selectedPaymentMethod == 'PayPal') {
-        final savedMethod = SavedPaymentMethod(
-          paymentMethod: 'PayPal',
-          email: _paypalEmailController.text,
-          isDefault: _savedMethods.isEmpty,
-          savedDate: DateTime.now(),
+          cardHash: cardHash,
         );
         await DatabaseHelper().insertSavedPaymentMethod(savedMethod);
       }
@@ -926,11 +899,6 @@ class _PaymentDataScreenState extends State<PaymentDataScreen> {
     _cvvController.dispose();
     _cardHolderController.dispose();
     _paypalEmailController.dispose();
-    _cardNumberFocus.dispose();
-    _validUntilFocus.dispose();
-    _cvvFocus.dispose();
-    _cardHolderFocus.dispose();
-    _paypalEmailFocus.dispose();
     super.dispose();
   }
 }

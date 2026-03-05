@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'screens/products_screen.dart';
+import 'utils/encryption_helper.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializar encriptación
+  await EncryptionHelper().initialize();
+
   runApp(const MyApp());
 }
 
